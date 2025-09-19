@@ -1,665 +1,141 @@
-# mem3 - Java版AI智能体记忆系统技术方案
-
-## 1. 项目概述 (Project Overview)
-
-### 1.1 项目简介与愿景
-mem3 ("三生万物") 是一个基于 Java 的开源 AI 智能体记忆系统，为 AI 应用提供持久化、智能化的记忆管理能力。项目旨在为 Java 生态系统提供类似 mem0 的记忆层解决方案，通过"三"种核心记忆类型（短期、长期、关系）衍生出无限的智能可能性。
-
-**核心价值主张：**
-- 让AI智能体具备完整的记忆管理能力，包括短期记忆、长期记忆和关系记忆
-- 让AI智能体记住用户习惯和偏好，提供真正个性化的交互体验
-- 提供统一的记忆管理API，简化 Java 技术栈 AI应用开发和集成
-
-### 1.2 核心特性对比分析 (vs mem0)
-
-| 特性 | mem0 (Python) | mem3 (Java) |
-|------|---------------|-----------------|
-| 编程语言 | Python | Java |
-| 框架基础 | Pydantic + 自定义 | Spring Boot 2.x |
-| 记忆类型 | Working/Factual/Episodic/Semantic/Procedural | 完全对应支持 |
-| 向量数据库 | 20+种支持 | 初期支持 Chroma/Milvus/Elasticsearch |
-| LLM集成 | OpenAI/Anthropic/本地模型 | OpenAI/阿里云/腾讯云/本地模型 |
-| 图数据库 | Neo4j/Neptune/Memgraph | 二期(可选) Neo4j |
-| API形式 | Python SDK + REST API | Java Library |
-| 部署方式 | 库+平台服务 | 纯Java库 |
-
-### 1.3 当前Agent开发痛点分析与目标用户
-
-#### 1.3.1 现状痛点总结
-
-| 痛点类别 | 具体表现 | 业务影响 | 量化损失 |
-|---------|---------|---------|---------|
-| **会话断裂** | 新会话时，之前用户历史信息完全丢失，如前一天用户来咨询订单发货，今天又来催发货，说明用户很着急，处理优先级就不同 | 每次对话都需重新收集用户信息，体验极差 | 客服效率下降60%，用户流失率增加25% |
-| **记忆冲突** | 用户更新偏好时 (如"我现在喜欢茶不喜欢咖啡")，系统不知道如何处理新旧信息冲突，需要一套完善的冲突处理能力 | 推荐系统基于过期偏好工作，个性化失效 | 推荐准确率下降40%，转化率下降30% |
-| **检索困难** | 用户问"上次讨论的项目"时，系统无法快速定位相关历史记忆，之前只是记录繁杂的原始内容，缺少记忆抽象、高维提取 | 无法提供上下文连贯的对话，智能化水平低 | 问题解决时间增加3倍，用户满意度下降50% |
-| **上下文压缩** | 长时间对话历史累加，很容易超出模型token限制(如GPT-4的32K限制)，必须截断或压缩 | 丢失重要上下文信息，AI回答质量下降 | 上下文相关性下降70%，需要额外30%的澄清轮次 |
-| **多模态割裂** | 文本、图片、文件等信息分散存储，无法形成统一的用户记忆 | 跨模态信息关联缺失，智能体理解不完整 | 多模态任务成功率仅40%，信息利用率低 |
-
-#### 1.3.2 典型应用场景
-
-**场景1：AI陪伴产品** 
-- **用户痛点**：AI伙伴无法记住用户的生活细节、情感状态、成长历程，缺乏真实的陪伴感
-- **mem3解决方案**：
-  - 情景记忆：记住每次聊天的背景、用户当时的心情、讨论的话题
-  - 事实记忆：记住用户的基本信息、兴趣爱好、重要事件
-  - 语义记忆：理解用户的性格特征、价值观、思维模式
-- **价值体现**：用户粘性提升300%，日活跃时长从10分钟增加到45分钟
-
-**场景2：企业智能客服系统**
-- **用户痛点**：客户重复咨询同样问题，客服需要反复收集基础信息，解决效率低
-- **mem3解决方案**：
-  - 持续记住客户历史问题、解决方案、满意度反馈
-  - 智能识别客户类型和紧急程度，如"连续两天咨询发货"表示着急
-  - 跨渠道记忆同步，电话、网页、App统一客户画像
-- **价值体现**：首次解决率从60%提升到85%，人工介入减少40%
-
-## 2. 架构设计 (Architecture Design)
-
-### 2.1 基于人类大脑记忆机制的设计思考
-
-#### 2.1.1 人脑记忆系统借鉴
-
-**认知神经科学基础**
-人类大脑记忆系统经过数百万年进化，形成了高效的信息处理机制。mem3的设计深度借鉴这些原理：
-
-**核心概念澄清**：在认知科学研究中，人类记忆系统分为两大类：
-- **隐式记忆（Implicit Memory）**：无意识的技能和习惯记忆
-- **显式记忆（Explicit Memory）**：可以有意识回忆的记忆，如事实、经历
-
-对应到AI智能体架构：
-- **隐式记忆 ≈ LLM预训练参数（Parametric Memory）**：模型权重中蕴含的知识和技能，无法直接访问或修改
-- **显式记忆 ≈ 外部记忆系统（Non-parametric Memory）**：可检索、可更新的RAG知识库
-
-**重要边界说明**：本方案专注于外部显式记忆系统的设计与实现，即如何让AI智能体像人类一样主动记忆、组织和运用经历过的信息。
-
-**1. 记忆多存储模型 (Multi-Store Model)**
-```
-人脑记忆流程：
-感官记忆 → 短期记忆 → 长期记忆
- (0.5s)     (15-30s)     (永久)
-
-mem3映射：
-信息编码 → 工作记忆 → 持久化记忆
-(embedding)  (会话内)     (跨会话)
-```
-
-**实际对应关系**：
-- **感官记忆 → 信息编码**：将输入的文本、图片、文件等多模态信息转换为向量表示(embedding)，这是模型对输入的感知编码过程
-- **短期记忆 → 工作记忆**：会话期间的临时信息存储，用于维持对话连贯性，模拟人脑的工作记忆，容量有限、会话结束后衰减
-- **长期记忆 → 持久化记忆**：重要信息经过筛选和处理后，永久存储为各种类型的记忆，只有被"注意"和"重复"的信息才会固化为长期记忆
-
-
-**2. 神经科学的记忆分类**
-```
-大脑记忆分类          mem3对应实现                存储特点
-├─ 陈述性记忆         
-│  ├─ 情景记忆        EpisodicMemory             海马体+时间标签
-│  └─ 语义记忆        SemanticMemory             皮层+概念网络
-│      └─ 事实记忆    FactualMemory              用户画像特化
-└─ 程序性记忆         ProceduralMemory           基底神经节+步骤序列
-```
-
-**具体映射逻辑与实例**：
-
-**情景记忆 (EpisodicMemory)**：个人经历，包含时间、地点和情感
-- *AI陪伴例子*："昨天晚上10点，小明在卧室里和我聊天，说他明天要参加面试，很紧张，我安慰了他"
-- *客服例子*："2024年1月15日上午，张先生通过微信咨询订单号12345的发货状态，表现出比较着急的情绪"
-
-**语义记忆 (SemanticMemory)**：事实、概念和一般性知识
-- *通用知识例子*："法国的首都是巴黎"，"VIP客户通常对服务响应时间要求更高"
-- *领域规则例子*："退换货政策是7天无理由退货，电子产品有1年保修"
-
-**事实记忆 (FactualMemory)**：语义记忆的特殊情况，专门存储用户画像信息
-- *用户偏好*："小明喜欢科幻电影，对新技术感兴趣，遇到压力时需要鼓励"
-- *用户属性*："张先生是VIP客户，通常网购电子产品，对物流时效敏感"
-
-**程序记忆 (ProceduralMemory)**：执行技能和程序的记忆
-- *交互技能*："处理用户负面情绪的标准流程"
-- *业务流程*："退货处理的完整操作步骤"
-
-**3. 记忆巩固(Consolidation)过程模拟**
-```
-人脑巩固过程：
-编码 → 巩固 → 检索 → 再巩固
-│      │     │     │
-│      │     │     └─ 每次访问都可能修改记忆
-│      │     └─ 相关性激活，关联记忆同时激活  
-│      └─ 重要性评估，决定是否长期保存
-└─ 多感官信息整合，形成记忆痕迹
+# mem3 - Java版AI智能体记忆系统
 
-mem3工程化：
-输入 → 冲突检测 → 存储 → 更新权重
-│      │         │     │
-│      │         │     └─ 访问频次影响权重
-│      │         └─ 向量化存储+关系图谱
-│      └─ LLM评估重要性和冲突
-└─ 多模态信息抽取和结构化
-```
-
-#### 2.1.2 人类记忆处理的挑战与工程思考
+## 1. 项目简介
 
-**为什么大脑的记忆处理这么难？**
-
-想象一下，你今天早上喝咖啡时想起了"我昨天和张三聊过工作的事"，然后又想到"张三是我大学同学"，接着可能想起"大学时我们一起熬夜做项目"。这个过程看似简单，实际上大脑在毫秒级时间内完成了：
+### 1.1 什么是mem3
+mem3 ("三生万物") 是一个Java版本的AI智能体记忆系统。简单说，就是让AI能够像人一样记住和回忆信息。
 
-1. **多重筛选**：从几万条记忆中找到相关的
-2. **冲突处理**：如果张三换了工作，大脑自动用新信息
-3. **关联激活**：一个记忆激活了一串相关记忆
-4. **情境重构**：结合当前情境重新"编辑"了回忆
+**解决的问题：**
+- AI每次对话都像失忆一样，不记得之前聊过什么
+- 用户需要反复重复自己的信息，体验很差
+- AI无法提供个性化的服务，因为记不住用户偏好
 
-**具体的工程挑战**
+**mem3的价值：**
+- 让AI记住用户的基本信息和偏好
+- 让AI记住重要的对话历史，并持续从数据中总结和学习规律
+- 简单易用的Java API 方便集成
 
-- 挑战1：冲突判定与更新策略
-  - 关键问题：新旧事实冲突、不同类型的更新边界。
-  - 对应做法：规则优先（显式“更新/更改/删除”优先；时间更近优先；事实类可覆盖、情景类追加不覆盖），不确定时单次 LLM 裁决；保留版本历史，支持回滚。
-
-- 挑战2：抽取质量与类型区分
-  - 关键问题：冗余噪声、重复记录、类型混淆导致可用性下降。
-  - 对应做法：一次调用输出分类型 JSON（working/factual/episodic/semantic/procedural）；设置信心阈值与每类型条目上限；相似合并、重复去重。
-
-- 挑战3：检索召回与轻量排序
-  - 关键问题：在低延迟下保证高召回与相关性。
-  - 对应做法：向量 TopK 召回 + 必要过滤（userId/sessionId/type）+ 轻量重排（相关度×类型权重 + 时间衰减）。关系图谱检索放到二期。
+### 1.2 实际应用场景
 
-- 挑战4：时间维度与生命周期管理
-  - 关键问题：短期上下文、长期画像、情景冗长如何统筹。
-  - 对应做法：工作记忆 TTL 到期自动清理；情景记忆定期压缩为语义摘要；事实记忆仅更新不衰减；策略参数可配置。
-
-- 挑战5：成本与一致性保障
-  - 关键问题：控制成本/延迟，同时避免重复写入与读写不一致。
-  - 对应做法：本地能力优先，LLM 仅兜底且支持批量；写入使用幂等键与失败重试；检索侧短 TTL 缓存并保证最终一致性。
-
-### 2.2 一期实现思路
+**场景1：智能客服**
+- 问题：客户每次都要重新说一遍自己的问题，客服效率低
+- 解决：记住客户历史问题，下次直接知道客户在说什么
+- 效果：客服效率提升60%，客户满意度大幅提升
 
-#### 2.2.1 简化与取舍
+**场景2：AI陪伴助手**
+- 问题：AI不记得用户的生活细节，缺乏真实感
+- 解决：记住用户的喜好、心情、重要事件
+- 效果：用户粘性提升3倍，使用时长从10分钟增加到45分钟
 
-- 一次抽取多类型记忆：新增消息时，仅调用一次 LLM，输出按类型分组的结果（Working/Factual/Episodic/Semantic/Procedural）。
-- 关联记忆激活：检索仅依赖向量召回，以类型、时间、权重做轻量的重排。图谱放入二期规划。
-- 冲突处理规则优先：显式“更新/更改/删除”优先；时间更近优先；事实类可覆盖、情景类只追加；不确定再用一次 LLM 裁决。
-- 遗忘与压缩：工作记忆会话结束清理；情景记忆达阈值后批量压缩为语义摘要；事实记忆仅覆盖不衰减。
-- 成本与性能：模板要求严格 JSON 输出，支持批量处理与条目上限；可配置开关控制是否做查询增强。
+**场景3：个性化推荐**
+- 问题：用户偏好变化时，系统不知道如何处理新旧信息
+- 解决：智能处理信息冲突，记住用户最新的偏好
+- 效果：推荐准确率提升40%，转化率提升30%
 
-#### 2.2.2 整体策略与关键路径
+## 2. 设计思路
 
-- 整体策略：
-  - 一次抽取多类型，减少交互次数，保留类型边界。
-  - 纯向量检索为主，关系网络二期引入，保证一期响应稳定。
-  - 规则优先 + LLM 兜底，兼顾成本与正确性，保留版本历史。
-  - 少同步多异步：写入与检索走同步快链路，压缩/清理走异步。
-  - 强可配置与可观测：所有阈值、权重、开关可调，有指标可跟踪。
+### 2.1 借鉴人脑记忆机制
 
-- 关键路径：
-  1) 输入预处理：归一化消息、生成上下文摘要、定位 `userId/sessionId`。
-  2) 多类型抽取：构建统一 Prompt，一次调用 LLM，按 Schema 输出分类型 JSON；每类型最多 N 条（默认 5）。
-  3) 冲突处理：先基于相似度与规则决定 ADD/UPDATE/SKIP/DELETE，边界再调用一次 LLM 裁决，保留旧版本方便追溯。
-  4) 存储写入：为每条记录生成 embedding，带上 `type/userId/sessionId/timestamps/tags` 元数据，写入向量库。
-  5) 检索返回：将查询向量化（可选查询增强），向量 TopK 召回后按“相关度×类型权重 + 时间衰减”重排，返回 `SearchResult`（含类型分布与来源）。
-  6) 维护任务：工作记忆 TTL 清理；情景记忆批量压缩为语义摘要；必要时重建向量；输出运行指标。
+人脑的记忆系统很复杂，但我们可以学习它的核心原理：
 
-- 性能与成本目标（默认值，可调）：
-  - 写入（含一次 LLM 抽取）p95 ≤ 800ms；检索 p95 ≤ 200ms。
-  - 向量 TopK：冲突判定 20，检索 50；结果缓存 TTL 30s。
-  - LLM：单次输出按类型限流，总条目 ≤ 25；失败重试 1 次。
+**人脑记忆流程：**
+1. **短期记忆**：刚听到的信息，很快会忘记，前额叶皮层（工作记忆）
+2. **长期记忆**：重要的信息会被记住很久，海马体（记忆巩固）+ 大脑皮层（长期存储）
+3. **记忆分类**：不同类型的信息用不同的方式存储
+   - 情景记忆：海马体 + 内侧颞叶
+   - 语义记忆：大脑皮层（特别是颞叶）
+   - 程序记忆：基底神经节 + 小脑
 
-#### 2.2.3 关键参数与默认值
+**mem3的对应设计：**
+1. **工作记忆**：当前对话的临时信息，会话结束就清理
+2. **持久记忆**：重要的用户信息，长期保存
+3. **记忆类型**：按信息性质分类存储，方便检索
 
-- 抽取与条目控制：
-  - `maxItemsPerType=5`，`minConfidence=0.6`
-  - `enableQueryEnhance=false`
+### 2.2 记忆类型设计
 
-- 冲突处理：
-  - `conflict.similarityThreshold=0.8`
-  - `conflict.llmFallback=true`（仅在规则不确定时触发）
+**5种记忆类型：**
 
-- 生命周期与压缩：
-  - `working.ttlMinutes=30`
-  - `compression.episodicThreshold=20`
+1. **工作记忆**：当前对话的临时信息
+   - 例子："用户现在在通勤路上"
+   - 特点：会话结束就删除
+   - 对应脑区：前额叶皮层
 
-- 检索与重排：
-  - `vector.topK.search=50`，`vector.topK.conflict=20`
-  - `rerank.weights={wRel:0.6, wTime:0.2, wType:0.2}`
+3. **情景记忆**：具体的对话经历
+   - 例子："昨天晚上用户准备面试感到紧张"
+   - 特点：包含时间、地点、情感
+   - 对应脑区：海马体 + 内侧颞叶
 
-- 缓存与一致性：
-  - `cache.resultTtlSeconds=30`，幂等写入与失败重试开启
+4. **语义记忆**：通用的、事实性的知识和背景
+   - 例子："紧急客户更关注响应速度、法国首都是巴黎"
+   - 特点：不针对特定用户
+   - 对应脑区：大脑皮层（颞叶、顶叶）
 
-#### 2.2.4 记忆处理的异步化挑战
+5. **程序记忆**：操作流程和技能，提炼难度最大、需要考虑不同场景
+   - 例子："处理用户负面情绪的标准流程、审核单据规则流程等"
+   - 特点：用于指导AI的行为
+   - 对应脑区：基底神经节 + 小脑
 
-**核心问题**：
-- **关联计算**：新记忆需要与历史记忆计算关联，O(n)复杂度
-- **图谱更新**：关系网络更新涉及多个节点，事务复杂
-- **压缩整理**：大批量记忆压缩需要LLM调用，耗时长
+6. **用户偏好**：用户的基本信息和偏好，是针对用户的特定提炼
+   - 例子："用户喜欢乌龙茶"、"用户是VIP客户"
+   - 特点：可以更新，不会过期
+   - 对应脑区：大脑皮层（颞叶）
 
-#### 2.2.5 分层处理策略
+### 2.3 实现策略
 
-**L1 实时层** (用户等待):
-- 记忆基本存储 (< 100ms)
-- 向量化和索引 (< 200ms)  
-- 同会话关联 (规则判断)
+**一期目标：简单实用**
 
-**L2 准实时层** (1-5分钟):
-- 语义相似度计算
-- 简单冲突检测
-- 用户画像更新
+1. **一次处理多种记忆**：用户发消息时，AI一次性分析并提取所有类型的记忆
+2. **冲突处理**：当新旧信息冲突时，优先用新信息，复杂情况让AI判断
+3. **快速检索**：用向量搜索快速找到相关记忆（可考虑其它辅助召回，如倒排检索等）
 
-**L3 批处理层** (小时/天级):
-- 复杂关联网络构建（二期可选）
-- 记忆压缩和摘要
-- 深度冲突解决
+**处理流程：**
+1. 用户发消息 → AI分析提取记忆 → 检查冲突 → 存储记忆（新增/更新）
+2. 用户问问题 → 搜索相关记忆 → 返回结果
 
-#### 2.2.6 渐进式一致性设计
+**性能目标：**
+- 添加记忆：800ms内完成
+- 搜索记忆：200ms内完成
+- 支持大量用户同时使用
 
-**最终一致性保证**：
-- 核心记忆立即可用
-- 关联关系延迟更新
-- 用户无感知的后台优化
+## 3. 核心功能
 
-**降级策略**：
-- 异步任务失败时，不影响基础功能
-- 关联关系缺失时，使用embedding相似度兜底
-- 系统负载高时，暂停非核心异步任务
+### 3.1 记忆管理
 
-### 2.3 核心模块划分与设计原则
+**记忆存储**：
+- 每条记忆都有唯一ID、内容、类型、用户ID等基本信息
+- 支持创建、更新、删除、搜索等基本操作
+- 自动管理记忆的生命周期，过期记忆会被压缩、清理（待定）
 
-#### 2.3.1 模块设计原则
-1. **单一职责原则 (SRP)**: 每个模块专注解决一类问题，避免功能耦合
-2. **开放封闭原则 (OCP)**: 对扩展开放，对修改封闭，支持插件化架构
-3. **依赖倒置原则 (DIP)**: 高层模块不依赖低层模块细节，依赖抽象接口
-4. **接口隔离原则 (ISP)**: 客户端不应依赖它不需要的接口，精简API设计
-5. **组合优于继承**: 通过组合实现复杂功能，提高代码复用性
+**冲突处理**：
+- 当新信息与旧信息冲突时，优先使用新信息
+- 复杂冲突让AI判断如何处理
+- 保留历史版本，支持回滚
 
-#### 2.3.2 模块结构设计
+### 3.2 智能处理
 
-**mem3-core** (核心模块)
+**AI分析**：
+- 用户发消息时，AI自动分析并提取重要信息
+- 一次性提取多种类型的记忆，提高效率
+- 程序性记忆，类比人去学会一个技能、更复杂，要结合实际场景来选择方案
+
+**记忆检索**：
+- 用向量搜索快速找到相关记忆
+- 支持自然语言查询，如"用户喜欢什么"
+- 按相关度和时间排序返回结果
+
+### 3.3 使用示例
+
 ```java
-com.mem3
-├── api/                    // 公开API接口层
-│   ├── MemoryService       // 统一记忆服务入口 [SRP: 统一访问点]
-│   ├── MemoryOperations    // 操作接口抽象 [ISP: 接口隔离]
-│   └── ConfigurationAPI    // 配置管理接口 [OCP: 配置扩展]
-├── model/                  // 数据模型层
-│   ├── MemoryItem          // 记忆条目基类 [DIP: 抽象基础]
-│   ├── WorkingMemory       // 工作记忆(继承MemoryItem)
-│   ├── FactualMemory       // 事实记忆(继承MemoryItem)  
-│   ├── EpisodicMemory      // 情景记忆(继承MemoryItem)
-│   ├── SemanticMemory      // 语义记忆(继承MemoryItem)
-│   ├── ProceduralMemory    // 程序记忆(继承MemoryItem)
-│   ├── MemoryType          // 记忆类型枚举
-│   ├── SearchResult        // 搜索结果封装
-│   └── RelationGraph       // 关系图谱模型 [组合: 复杂关系管理]
-├── processor/              // 核心处理器层
-│   ├── FactExtractor       // 事实抽取器 [SRP: 专门处理抽取]
-│   ├── ConflictResolver    // 冲突解决器 [SRP: 专门处理冲突]
-│   ├── MemoryFilter        // 记忆过滤器 [SRP: 专门处理过滤]
-│   ├── MemoryCompressor    // 记忆压缩器 [SRP: 专门处理压缩]
-│   └── RelationAnalyzer    // 关系分析器 [SRP: 专门处理关系]
-└── config/                 // 配置管理层
-    ├── Mem3Config          // 主配置类 [组合: 集成各种配置]
-    ├── StorageConfig       // 存储配置 [SRP: 存储相关配置]
-    └── ProcessorConfig     // 处理器配置 [SRP: 处理器相关配置]
-```
-
-**mem3-storage** (存储抽象模块)
-```java
-com.mem3.storage
-├── abstraction/            // 存储抽象层 [DIP: 依赖抽象]
-│   ├── StorageAdapter      // 存储适配器接口
-│   ├── TransactionManager  // 事务管理接口 [SRP: 事务专责]
-│   └── PartitionStrategy   // 分区策略接口 [OCP: 分区扩展]
-├── vector/                 // 向量数据库层
-│   ├── VectorStore         // 向量存储接口 [DIP: 抽象接口]
-│   ├── ChromaVectorStore   // Chroma实现 [OCP: 具体实现]
-│   ├── MilvusVectorStore   // Milvus实现 [OCP: 具体实现]
-│   ├── ElasticVectorStore  // Elasticsearch实现 [OCP: 具体实现]
-│   └── VectorStoreFactory  // 工厂模式 [组合: 统一创建]
-├── graph/                  // 图数据库层 [二期/可选]
-│   ├── GraphStore          // 图存储接口 [二期占位]
-│   ├── Neo4jGraphStore     // Neo4j实现 [二期实现]
-│   └── GraphQueryBuilder   // 查询构建器 [二期实现]
-└── relational/             // 关系数据库层
-    ├── HistoryRepository   // 历史记录仓库 [SRP: 历史专责]
-    ├── MetadataRepository  // 元数据仓库 [SRP: 元数据专责]
-    └── ConnectionPool      // 连接池管理 [SRP: 连接专责]
-```
-
-**mem3-llm** (LLM集成模块)
-```java
-com.mem3.llm
-├── abstraction/            // LLM抽象层 [DIP: 依赖抽象]
-│   ├── LlmProvider         // LLM提供者接口
-│   ├── ResponseParser      // 响应解析器接口 [ISP: 解析隔离]
-│   └── TokenManager        // Token管理接口 [SRP: Token专责]
-├── providers/              // 具体实现层
-│   ├── OpenAiProvider      // OpenAI实现 [OCP: 具体实现]
-│   ├── AliyunProvider      // 阿里云实现 [OCP: 具体实现]
-│   ├── TencentProvider     // 腾讯云实现 [OCP: 具体实现]
-│   └── LocalModelProvider // 本地模型实现 [OCP: 具体实现]
-├── embedding/              // 嵌入模型层
-│   ├── EmbeddingProvider   // 嵌入提供者接口 [DIP: 抽象接口]
-│   ├── OpenAiEmbedding     // OpenAI嵌入实现 [OCP: 具体实现]
-│   ├── LocalEmbedding      // 本地嵌入实现 [OCP: 具体实现]
-│   └── EmbeddingCache      // 嵌入缓存 [SRP: 缓存专责]
-└── utils/                  // 工具层
-    ├── PromptBuilder       // 提示词构建器 [SRP: 提示词专责]
-    ├── RetryHandler        // 重试处理器 [SRP: 重试专责]
-    └── RateLimiter         // 限流器 [SRP: 限流专责]
-```
-
-### 2.4 数据流时序图
-
-#### 2.4.1 记忆添加流程时序图（一期）
-```mermaid
-sequenceDiagram
-    participant Client
-    participant MemoryService
-    participant FactExtractor
-    participant LLM
-    participant ConflictResolver
-    participant VectorStore
-    participant HistoryDB
-
-    Client->>MemoryService: add(messages, userId)
-    MemoryService->>FactExtractor: extractMultiTypeFacts(messages)
-    FactExtractor->>LLM: generateResponse(prompt)
-    LLM-->>FactExtractor: factsByType{working[], factual[], episodic[], semantic[], procedural[]}
-    FactExtractor-->>MemoryService: extractedFactsByType
-    
-    MemoryService->>ConflictResolver: resolveConflicts(factsByType)
-    ConflictResolver->>VectorStore: searchTopK(embedding, k)
-    VectorStore-->>ConflictResolver: similarMemories[]
-    alt 难判定
-        ConflictResolver->>LLM: judgeConflict(newFact, oldFacts)
-        LLM-->>ConflictResolver: conflictActions[]
-    else 常规规则
-        ConflictResolver-->>MemoryService: ruleBasedActions[]
-    end
-    
-    loop 对每个Action
-        alt ADD
-            MemoryService->>VectorStore: insert(memoryItem)
-        else UPDATE  
-            MemoryService->>VectorStore: update(id, newContent)
-        else DELETE
-            MemoryService->>VectorStore: delete(id)
-        end
-        MemoryService->>HistoryDB: addHistory(action)
-    end
-    
-    MemoryService-->>Client: AddResult
-```
-
-#### 2.4.2 记忆检索流程时序图（一期）
-```mermaid
-sequenceDiagram
-    participant Client
-    participant MemoryService  
-    participant QueryOptimizer
-    participant LLM
-    participant VectorStore
-
-    Client->>MemoryService: search(query, filters, limit)
-    MemoryService->>QueryOptimizer: optimize(query) [可选]
-    QueryOptimizer->>LLM: enhanceQuery(originalQuery) [可选]
-    LLM-->>QueryOptimizer: optimizedQuery
-    QueryOptimizer-->>MemoryService: embedding + enhancedQuery
-    
-    MemoryService->>VectorStore: search(embedding, filters)
-    VectorStore-->>MemoryService: vectorResults[]
-    
-    MemoryService-->>Client: SearchResult(vectorResults)
-```
-
-### 2.5 接口设计原则
-
-1. **统一性**: 所有操作通过 MemoryService 统一入口
-2. **简洁性**: 方法参数简化，默认配置智能化
-3. **扩展性**: 插件化架构，支持自定义实现
-4. **类型安全**: 泛型支持，编译期类型检查
-5. **异步支持**: 提供同步和异步两套API
-
-## 3. 核心功能设计 (Core Features)
-
-### 3.1 记忆类型系统
-
-#### 3.1.1 记忆类型定义
-```java
-public enum MemoryType {
-    WORKING,      // 工作记忆-短期会话
-    FACTUAL,      // 事实记忆-用户画像
-    EPISODIC,     // 情景记忆-具体经历  
-    SEMANTIC,     // 语义记忆-概念知识
-    PROCEDURAL    // 程序记忆-操作流程
-}
-```
-
-#### 3.1.2 记忆条目模型设计思路
-
-**核心数据结构**：
-```java
-public abstract class MemoryItem {
-    private String id, memory;
-    private MemoryType type;
-    private String userId, sessionId;
-    private LocalDateTime createdAt, updatedAt;
-    private Map<String, Object> metadata;
-    
-    // 抽象方法：不同类型记忆的特殊处理
-    public abstract boolean isExpired();
-    public abstract int getPriority();
-}
-
-**具体实现类设计思路**：
-
-- **WorkingMemory**: 会话期间临时存储，有过期时间，优先级最高
-- **FactualMemory**: 用户画像专用，不过期，高频更新，支持冲突检测
-- **EpisodicMemory**: 具体交互经历，30天后可压缩，包含时间地点情感
-- **SemanticMemory**: 抽象概念知识，不过期，用于推理
-- **ProceduralMemory**: 操作流程技能，不过期，用于执行
-
-#### 3.1.3 记忆生命周期管理
-
-**核心操作**：
-- **创建**: 根据类型自动设置过期策略和优先级
-- **更新**: 支持冲突检测，保持版本历史  
-- **归档**: 软删除机制，支持恢复
-- **清理**: 定时任务清理过期记忆
-- **压缩**: 批量压缩相似记忆为摘要
-
-### 3.2 记忆操作引擎
-
-#### 3.2.1 记忆添加流程（一次抽取多类型）
-
-**核心步骤**：
-1. **多类型抽取**: 调用一次 LLM，从对话中一次性抽取并输出按类型分组的记忆列表（见提示词模板）。
-2. **向量化处理**: 为每条待落库记忆生成 embedding。
-3. **冲突检测**: 基于规则优先（时间、显式更新、类型规则），难判定时调用一次 LLM 裁决。
-4. **存储**: 仅落库到向量存储；不进行关系图谱更新（一期不建设）。
-
-#### 3.2.2 记忆检索算法（向量优先，一期简化）
-
-**检索策略**：
-1. **查询增强（可选）**: 通过 LLM 对自然语言查询重写为更利于检索的短语与关键词；也可关闭以节约成本。
-2. **单路检索**: 仅用向量相似度检索，召回 TopK。
-3. **轻量排序**: 结合相关性分数、时间衰减（可选）与类型优先级做简单线性加权。
-4. **结果筛选**: 按类型、权限与会话进行过滤。
-
-#### 3.2.3 记忆更新策略
-
-**更新机制**：
-1. **版本控制**: 保留历史版本，支持回滚
-2. **增量更新**: 只更新变化部分，保持关联关系
-3. **重新索引**: 内容变化时重新生成embedding
-4. **异步同步**: 更新向量存储后异步更新关系图谱
-
-#### 3.2.4 记忆删除机制
-
-**删除策略**：
-- **软删除**: 标记删除但保留数据，支持恢复
-- **级联清理**: 自动清理相关的关联关系
-- **批量操作**: 支持按条件批量删除
-- **权限控制**: 确保只能删除有权限的记忆
-
-### 3.3 智能处理组件
-
-#### 3.3.1 LLM集成与多类型事实抽取
-
-**事实抽取策略（一次调用返回多类型）**：
-- **提示词工程**: 使用统一模板，要求返回按类型分组的 JSON。
-- **结构化输出**: 必须是严格 JSON，可选附带 confidence、rationale、tags。
-- **质量过滤**: 对冗余、重复与低置信度项在服务端直接丢弃。
-- **成本控制**: 支持批量抽取与输出条目上限（如每类型最多 N 条）。
-
-#### 3.3.2 冲突检测与解决
-
-**冲突处理流程**：
-1. **相似度检测**: 基于embedding计算与历史记忆的相似度
-2. **规则匹配**: 优先使用预定义规则处理常见冲突
-3. **LLM裁决**: 复杂冲突交由LLM判断处理策略
-4. **用户确认**: 重要冲突可选择让用户最终确认
-
-#### 3.3.3 记忆压缩与摘要
-
-**压缩策略**：
-- **定时触发**: 每日凌晨批量处理过期情景记忆
-- **阈值控制**: 超过N条相似记忆才触发压缩
-- **智能摘要**: 使用LLM提取共同模式和关键信息
-- **类型转换**: 情景记忆压缩为语义记忆，提高检索效率
-
-### 3.4 提示词设计（一期）
-
-以下模板均以中文定义，输出为严格 JSON，可直接用于实现。
-
-#### 3.4.1 多类型记忆抽取 Prompt
-
-系统角色：
-```
-你是信息抽取器。从“用户与助手的最新对话片段”中抽取可长期利用的记忆。一次性按类型分组返回结果。
-约束：
-- 严格输出 JSON，不要解释文字。
-- 每个类型最多返回 N 条（默认 N=5）。
-- 工作记忆仅包含会话内短期信息，可设置 ttlMinutes。
-- 事实记忆用于用户画像；语义记忆用于通用知识；情景记忆需包含时间线索；程序记忆用于步骤与流程。
-- 不编造未出现的信息；重复或价值低的内容不要返回。
-```
-
-用户消息模板：
-```
-{
-  "conversation": [
-    {"role": "user", "content": "..."},
-    {"role": "assistant", "content": "..."}
-  ],
-  "now": "2025-01-01T10:00:00Z",
-  "userId": "u_123",
-  "sessionId": "s_456"
-}
-```
-
-期望输出 JSON Schema：
-```json
-{
-  "working": [{"memory": "string", "ttlMinutes": 30, "confidence": 0.0, "tags": ["string"]}],
-  "factual": [{"memory": "string", "confidence": 0.0, "tags": ["string"]}],
-  "episodic": [{"memory": "string", "when": "string|ISO8601|相对时间也可", "confidence": 0.0, "tags": ["string"]}],
-  "semantic": [{"memory": "string", "confidence": 0.0, "tags": ["string"]}],
-  "procedural": [{"memory": "string", "steps": ["string"], "confidence": 0.0, "tags": ["string"]}]
-}
-```
-
-示例输出：
-```json
-{
-  "working": [{"memory": "用户现在在通勤路上", "ttlMinutes": 60, "confidence": 0.8, "tags": ["context"]}],
-  "factual": [{"memory": "用户喜欢乌龙茶", "confidence": 0.9, "tags": ["preference","beverage"]}],
-  "episodic": [{"memory": "昨天晚上用户准备面试感到紧张", "when": "昨天晚上", "confidence": 0.85, "tags": ["emotion","interview"]}],
-  "semantic": [{"memory": "紧急客户更关注响应速度", "confidence": 0.7, "tags": ["cs","priority"]}],
-  "procedural": []
-}
-```
-
-#### 3.4.2 冲突裁决 Prompt（规则优先，LLM兜底）
-
-系统角色：
-```
-你是冲突裁决器。根据“新记忆候选”与“历史候选”决定操作：ADD/UPDATE/SKIP/DELETE，并给出目标记录 id（如有）。
-规则：
-- 明确表达更新/更改/删除的陈述优先（例如“我改地址了”）。
-- 事实类可覆盖；情景类追加不覆盖；程序类以步骤更新为主；语义类谨慎合并。
-- 更近时间优先；来源更可信优先。
-- 无把握则 SKIP。
-输出严格 JSON。
-```
-
-输入模板：
-```json
-{
-  "newItem": {"type": "FACTUAL", "memory": "用户现在喜欢茶"},
-  "candidates": [{"id": "m1", "type": "FACTUAL", "memory": "用户喜欢咖啡", "updatedAt": "2024-12-01"}]
-}
-```
-
-输出模板：
-```json
-{"action": "UPDATE", "targetId": "m1", "reason": "用户明确表达偏好更新", "mergedMemory": "用户现在喜欢茶"}
-```
-
-#### 3.4.3 查询增强 Prompt（可选）
-
-目标：把自然语言查询改写为关键词与短语，便于向量检索。
-
-输入：
-```json
-{"query": "上次我们聊到的发货问题", "userProfile": {"tier": "VIP"}}
-```
-
-输出：
-```json
-{"phrases": ["发货", "物流时效", "上次对话"], "mustHave": ["发货"], "niceToHave": ["催促","VIP"]}
-```
-
-#### 3.4.4 情景压缩 Prompt（批量）
-
-目标：将多条相似情景记忆合并为一条语义摘要。
-
-输入：
-```json
-{"episodicItems": [{"memory": "...", "when": "..."}, {"memory": "...", "when": "..."}]}
-```
-
-输出：
-```json
-{"semanticSummary": "过去两周用户多次表达对发货进度的担忧", "sourceIds": ["e1","e2","e3"]}
-```
-
-### 3.5 一期范围与开关
-
-- **纳入范围**：一次抽取多类型、规则优先的冲突处理、向量检索与轻量排序、定时清理与压缩。
-- **不纳入范围**：关系图谱与复杂关联网络、跨记忆网络检索、多跳推理。
-- **配置开关**：
-  - `enableQueryEnhance`（默认关）
-  - `maxItemsPerType`（每类型抽取上限）
-  - `conflict.llmFallback`（默认开，仅在规则不确定时触发）
-  - `cleanup.ttlMinutesForWorking`、`compress.episodicThreshold`
-
----
-
-## 核心API使用示例
-
-### 基础使用
-```java
-// 配置与初始化
+// 初始化记忆服务
 MemoryService memoryService = new MemoryService(config);
 
-// 添加记忆
+// 添加记忆（AI自动分析用户消息，判断是新增或更新）
 memoryService.add(messages, userId);
 
-// 搜索记忆  
+// 搜索记忆
 SearchResult result = memoryService.search("用户偏好", userId);
 
-// 更新记忆
-memoryService.update(memoryId, newContent);
-
-// 删除记忆
-memoryService.delete(memoryId);
 ```
 
-这个技术方案为Java生态系统提供了一个完整的AI记忆管理解决方案，支持企业级应用需求，同时保持API的简洁性和易用性。
+**总结**：
+mem3为Java应用提供了简单易用的AI记忆管理功能，让AI能够记住用户信息，提供个性化服务。
