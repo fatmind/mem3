@@ -10,18 +10,7 @@ mem3 ("三生万物") 是一个基于 Java 的开源 AI 智能体记忆系统，
 - 让AI智能体记住用户习惯和偏好，提供真正个性化的交互体验
 - 提供统一的记忆管理API，简化 Java 技术栈 AI应用开发和集成
 
-### 1.2 核心特性对比分析 (vs mem0)
 
-| 特性 | mem0 (Python) | mem3 (Java) |
-|------|---------------|-----------------|
-| 编程语言 | Python | Java |
-| 框架基础 | Pydantic + 自定义 | Spring Boot 2.x |
-| 记忆类型 | Working/Factual/Episodic/Semantic/Procedural | 完全对应支持 |
-| 向量数据库 | 20+种支持 | 初期支持 Chroma/Milvus/Elasticsearch |
-| LLM集成 | OpenAI/Anthropic/本地模型 | OpenAI/阿里云/腾讯云/本地模型 |
-| 图数据库 | Neo4j/Neptune/Memgraph | 二期(可选) Neo4j |
-| API形式 | Python SDK + REST API | Java Library |
-| 部署方式 | 库+平台服务 | 纯Java库 |
 
 ### 1.3 当前Agent开发痛点分析与目标用户
 
@@ -231,20 +220,10 @@ mem3工程化：
 
 #### 2.2.5 分层处理策略
 
-**L1 实时层** (用户等待):
-- 记忆基本存储 (< 100ms)
-- 向量化和索引 (< 200ms)  
-- 同会话关联 (规则判断)
-
-**L2 准实时层** (1-5分钟):
-- 语义相似度计算
-- 简单冲突检测
-- 用户画像更新
-
-**L3 批处理层** (小时/天级):
-- 复杂关联网络构建（二期可选）
-- 记忆压缩和摘要
-- 深度冲突解决
+用直白的话说，我们把事情分三档处理，先让核心功能马上可用，再在后台把细活补上：
+- 实时（用户等待时）：先保存新记忆，生成向量，做同会话内的简单关联，尽量控制在几百毫秒内。
+- 准实时（1-5 分钟内）：计算相似度，做基本冲突判断，更新用户画像。
+- 批量（每天或按小时）：清理和压缩冗长的情景记忆，必要时做更复杂的关联整理。
 
 #### 2.2.6 渐进式一致性设计
 
@@ -258,163 +237,7 @@ mem3工程化：
 - 关联关系缺失时，使用embedding相似度兜底
 - 系统负载高时，暂停非核心异步任务
 
-### 2.3 核心模块划分与设计原则
 
-#### 2.3.1 模块设计原则
-1. **单一职责原则 (SRP)**: 每个模块专注解决一类问题，避免功能耦合
-2. **开放封闭原则 (OCP)**: 对扩展开放，对修改封闭，支持插件化架构
-3. **依赖倒置原则 (DIP)**: 高层模块不依赖低层模块细节，依赖抽象接口
-4. **接口隔离原则 (ISP)**: 客户端不应依赖它不需要的接口，精简API设计
-5. **组合优于继承**: 通过组合实现复杂功能，提高代码复用性
-
-#### 2.3.2 模块结构设计
-
-**mem3-core** (核心模块)
-```java
-com.mem3
-├── api/                    // 公开API接口层
-│   ├── MemoryService       // 统一记忆服务入口 [SRP: 统一访问点]
-│   ├── MemoryOperations    // 操作接口抽象 [ISP: 接口隔离]
-│   └── ConfigurationAPI    // 配置管理接口 [OCP: 配置扩展]
-├── model/                  // 数据模型层
-│   ├── MemoryItem          // 记忆条目基类 [DIP: 抽象基础]
-│   ├── WorkingMemory       // 工作记忆(继承MemoryItem)
-│   ├── FactualMemory       // 事实记忆(继承MemoryItem)  
-│   ├── EpisodicMemory      // 情景记忆(继承MemoryItem)
-│   ├── SemanticMemory      // 语义记忆(继承MemoryItem)
-│   ├── ProceduralMemory    // 程序记忆(继承MemoryItem)
-│   ├── MemoryType          // 记忆类型枚举
-│   ├── SearchResult        // 搜索结果封装
-│   └── RelationGraph       // 关系图谱模型 [组合: 复杂关系管理]
-├── processor/              // 核心处理器层
-│   ├── FactExtractor       // 事实抽取器 [SRP: 专门处理抽取]
-│   ├── ConflictResolver    // 冲突解决器 [SRP: 专门处理冲突]
-│   ├── MemoryFilter        // 记忆过滤器 [SRP: 专门处理过滤]
-│   ├── MemoryCompressor    // 记忆压缩器 [SRP: 专门处理压缩]
-│   └── RelationAnalyzer    // 关系分析器 [SRP: 专门处理关系]
-└── config/                 // 配置管理层
-    ├── Mem3Config          // 主配置类 [组合: 集成各种配置]
-    ├── StorageConfig       // 存储配置 [SRP: 存储相关配置]
-    └── ProcessorConfig     // 处理器配置 [SRP: 处理器相关配置]
-```
-
-**mem3-storage** (存储抽象模块)
-```java
-com.mem3.storage
-├── abstraction/            // 存储抽象层 [DIP: 依赖抽象]
-│   ├── StorageAdapter      // 存储适配器接口
-│   ├── TransactionManager  // 事务管理接口 [SRP: 事务专责]
-│   └── PartitionStrategy   // 分区策略接口 [OCP: 分区扩展]
-├── vector/                 // 向量数据库层
-│   ├── VectorStore         // 向量存储接口 [DIP: 抽象接口]
-│   ├── ChromaVectorStore   // Chroma实现 [OCP: 具体实现]
-│   ├── MilvusVectorStore   // Milvus实现 [OCP: 具体实现]
-│   ├── ElasticVectorStore  // Elasticsearch实现 [OCP: 具体实现]
-│   └── VectorStoreFactory  // 工厂模式 [组合: 统一创建]
-├── graph/                  // 图数据库层 [二期/可选]
-│   ├── GraphStore          // 图存储接口 [二期占位]
-│   ├── Neo4jGraphStore     // Neo4j实现 [二期实现]
-│   └── GraphQueryBuilder   // 查询构建器 [二期实现]
-└── relational/             // 关系数据库层
-    ├── HistoryRepository   // 历史记录仓库 [SRP: 历史专责]
-    ├── MetadataRepository  // 元数据仓库 [SRP: 元数据专责]
-    └── ConnectionPool      // 连接池管理 [SRP: 连接专责]
-```
-
-**mem3-llm** (LLM集成模块)
-```java
-com.mem3.llm
-├── abstraction/            // LLM抽象层 [DIP: 依赖抽象]
-│   ├── LlmProvider         // LLM提供者接口
-│   ├── ResponseParser      // 响应解析器接口 [ISP: 解析隔离]
-│   └── TokenManager        // Token管理接口 [SRP: Token专责]
-├── providers/              // 具体实现层
-│   ├── OpenAiProvider      // OpenAI实现 [OCP: 具体实现]
-│   ├── AliyunProvider      // 阿里云实现 [OCP: 具体实现]
-│   ├── TencentProvider     // 腾讯云实现 [OCP: 具体实现]
-│   └── LocalModelProvider // 本地模型实现 [OCP: 具体实现]
-├── embedding/              // 嵌入模型层
-│   ├── EmbeddingProvider   // 嵌入提供者接口 [DIP: 抽象接口]
-│   ├── OpenAiEmbedding     // OpenAI嵌入实现 [OCP: 具体实现]
-│   ├── LocalEmbedding      // 本地嵌入实现 [OCP: 具体实现]
-│   └── EmbeddingCache      // 嵌入缓存 [SRP: 缓存专责]
-└── utils/                  // 工具层
-    ├── PromptBuilder       // 提示词构建器 [SRP: 提示词专责]
-    ├── RetryHandler        // 重试处理器 [SRP: 重试专责]
-    └── RateLimiter         // 限流器 [SRP: 限流专责]
-```
-
-### 2.4 数据流时序图
-
-#### 2.4.1 记忆添加流程时序图（一期）
-```mermaid
-sequenceDiagram
-    participant Client
-    participant MemoryService
-    participant FactExtractor
-    participant LLM
-    participant ConflictResolver
-    participant VectorStore
-    participant HistoryDB
-
-    Client->>MemoryService: add(messages, userId)
-    MemoryService->>FactExtractor: extractMultiTypeFacts(messages)
-    FactExtractor->>LLM: generateResponse(prompt)
-    LLM-->>FactExtractor: factsByType{working[], factual[], episodic[], semantic[], procedural[]}
-    FactExtractor-->>MemoryService: extractedFactsByType
-    
-    MemoryService->>ConflictResolver: resolveConflicts(factsByType)
-    ConflictResolver->>VectorStore: searchTopK(embedding, k)
-    VectorStore-->>ConflictResolver: similarMemories[]
-    alt 难判定
-        ConflictResolver->>LLM: judgeConflict(newFact, oldFacts)
-        LLM-->>ConflictResolver: conflictActions[]
-    else 常规规则
-        ConflictResolver-->>MemoryService: ruleBasedActions[]
-    end
-    
-    loop 对每个Action
-        alt ADD
-            MemoryService->>VectorStore: insert(memoryItem)
-        else UPDATE  
-            MemoryService->>VectorStore: update(id, newContent)
-        else DELETE
-            MemoryService->>VectorStore: delete(id)
-        end
-        MemoryService->>HistoryDB: addHistory(action)
-    end
-    
-    MemoryService-->>Client: AddResult
-```
-
-#### 2.4.2 记忆检索流程时序图（一期）
-```mermaid
-sequenceDiagram
-    participant Client
-    participant MemoryService  
-    participant QueryOptimizer
-    participant LLM
-    participant VectorStore
-
-    Client->>MemoryService: search(query, filters, limit)
-    MemoryService->>QueryOptimizer: optimize(query) [可选]
-    QueryOptimizer->>LLM: enhanceQuery(originalQuery) [可选]
-    LLM-->>QueryOptimizer: optimizedQuery
-    QueryOptimizer-->>MemoryService: embedding + enhancedQuery
-    
-    MemoryService->>VectorStore: search(embedding, filters)
-    VectorStore-->>MemoryService: vectorResults[]
-    
-    MemoryService-->>Client: SearchResult(vectorResults)
-```
-
-### 2.5 接口设计原则
-
-1. **统一性**: 所有操作通过 MemoryService 统一入口
-2. **简洁性**: 方法参数简化，默认配置智能化
-3. **扩展性**: 插件化架构，支持自定义实现
-4. **类型安全**: 泛型支持，编译期类型检查
-5. **异步支持**: 提供同步和异步两套API
 
 ## 3. 核心功能设计 (Core Features)
 
